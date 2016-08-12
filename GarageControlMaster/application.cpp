@@ -1,25 +1,19 @@
-#include "Wire.h"
+#include "application.h"
+
 #include "Adafruit_LEDBackpack.h"
 #include "Adafruit_GFX.h"
 #include "CmdMessenger.h"
-#include "GarageControl.h"
 #include "Led_Matrix.h"
 #include "Button.h"
 #include "Led.h"
 #include "Timer.h"
 
-enum MODE
-{
-  RUN,
-  SETUP,
-  BRIGHT,
-  TEMP,
-  SPEED,
-};
+#include "Config.h"
+#include "GarageControl.h"
 
+// things
 Button openButton(2);
 Button closeButton(3);
-Button modeButton(7);
 
 Led_Matrix screen(16, 8, 2, 1);
 
@@ -27,6 +21,40 @@ Led openLed(5);
 Led closeLed(6);
 
 CmdMessenger cmd(Serial);
+
+// cloud functions
+int funcRestart(String command);
+int funcReport(String command);
+
+// timer functions
+void onTenSecondTimer();
+
+// event functions
+void reportHandler(const char * event, const char * data);
+
+// other
+void readLevel();
+void reportLevel();
+
+Config config;
+Timer tenSecondTimer(SECOND_MS * 10, onTenSecondTimer); // trigger ever 10 seconds
+STEJ_Ping sensor(TRIGGER_PIN, ECHO_PIN);
+
+// global vars
+double upTime = 0.0;
+double currentLevel = 0.0;
+
+uint32_t startTime = 0;  // when the sensor started
+uint32_t readTime = 0;   // when the last read was
+uint32_t reportTime = 0; // when the last report was
+
+int rssi = 0;
+
+bool signalReport = false;
+
+SYSTEM_THREAD(ENABLED);
+//SYSTEM_MODE(SEMI_AUTOMATIC);
+
 
 float temperature = 0.0;
 float humidity = 0.0;
@@ -319,3 +347,108 @@ void loop()
   Timer.run();
 }
 
+void setup()
+{
+  Serial.begin(9600);
+  Serial.print("ID: ");
+  Serial.println(System.deviceID());
+
+  config.subscribe();
+  config.load();
+
+  Particle.function("restart", funcRestart);
+  Particle.function("report", funcReport);
+
+  Particle.variable("upTime", upTime);
+  Particle.variable("level", currentLevel);
+  Particle.variable("read", readTime);
+  Particle.variable("report", reportTime);
+  Particle.variable("rssi", rssi);
+
+  Particle.subscribe(REPORT_EVENT_NAME, &reportHandler);
+
+  sensor.begin();
+
+  tenSecondTimer.start();
+
+  Particle.publish("build", String::format("%s %s", __DATE__, __TIME__), PRIVATE);
+}
+
+void loop()
+{
+  if( startTime == 0 )
+  {
+    startTime = Time.now();
+  }
+
+  // track the number of days we are running
+  upTime = (double) (Time.now() - startTime) / 86400.0;
+}
+
+int funcRestart(String command)
+{
+  System.reset();
+
+  return 0;
+}
+
+int funcReport(String command)
+{
+  reportLevel();
+
+  return 0;
+}
+
+void onTenSecondTimer()
+{
+  rssi = WiFi.RSSI();
+  readLevel();
+}
+
+void readLevel()
+{
+  uint16_t count = config.sampleCount();
+  double sum = 0;
+
+  for( uint16_t x = 0; x < count; x++ )
+  {
+    if( x > 0 )
+    {
+      delayMicroseconds(1000000);
+    }
+
+    switch( config.sampleUnits() )
+    {
+    case Centimeter:
+      sum += sensor.getDistanceCM();
+      break;
+
+    case Inch:
+      sum += sensor.getDistanceInch();
+      break;
+    }
+
+  //  Particle.publish("SAMPLES", String::format("%d: %f", x, sum), PRIVATE);
+  }
+
+  readTime = Time.now();
+  currentLevel = sum / count;
+}
+
+void reportHandler(const char * event, const char * data)
+{
+  reportLevel();
+}
+
+void reportLevel()
+{
+  reportTime = Time.now();
+
+  Particle.publish(
+      "level/current",
+      String::format("%s;%f;%s",
+          Time.format(readTime,"%F %T").c_str(),
+          currentLevel,
+          toString(config.sampleUnits()).c_str()),
+      PRIVATE);
+}
