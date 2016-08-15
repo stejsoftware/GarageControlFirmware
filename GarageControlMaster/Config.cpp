@@ -6,6 +6,7 @@
  */
 
 #include "application.h"
+#include "Json/ArduinoJson.h"
 #include "Config.h"
 
 #define CONFIG_VER 1
@@ -14,7 +15,7 @@ const String Config::EVENT_NAME = String("config/") + System.deviceID();
 const String Config::SET_CONFIG = Config::EVENT_NAME + String("/set");
 const String Config::GET_CONFIG = Config::EVENT_NAME + String("/get");
 
-Config::Config() :
+Config::Config()
 {
 }
 
@@ -101,9 +102,9 @@ void Config::handler(const char * event, const char * data)
     char buff[256] = { 0 };
     StaticJsonBuffer<256> jsonBuffer;
     strncpy(buff, data, sizeof(buff));
-    JsonObject & root = jsonBuffer.parseObject(buff, 2);
+    //JsonObject & root = jsonBuffer.parseObject(buff, 2);
 
-    //m_sampleCount = get(root, "count", DEFAULT_SAMPLECOUNT);
+    //m_sampleCount = get(root, "count", 1);
 
     save();
     publish();
@@ -117,5 +118,5 @@ void Config::handler(const char * event, const char * data)
 
 void Config::publish() const
 {
-  Particle.publish("config", String::format("c:%d,t:%d,u:%s", m_sampleCount, m_reportTime, toString(sampleUnits()).c_str()), PRIVATE);
+  Particle.publish("config", String::format("nothing here yet"), PRIVATE);
 }

@@ -24,6 +24,9 @@ public:
   void handler(const char * event, const char * data);
 
 private:
+  static const String EVENT_NAME;
+  static const String SET_CONFIG;
+  static const String GET_CONFIG;
 
 };
 

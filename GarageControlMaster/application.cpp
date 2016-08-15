@@ -1,26 +1,31 @@
 #include "application.h"
 
-#include "Adafruit_LEDBackpack.h"
-#include "Adafruit_GFX.h"
-#include "CmdMessenger.h"
-#include "Led_Matrix.h"
-#include "Button.h"
-#include "Led.h"
-#include "Timer.h"
-
+#include "Adafruit-LED-Backpack/Adafruit_LEDBackpack.h"
+#include "Adafruit-GFX/Adafruit_GFX.h"
+#include "CmdMessenger/CmdMessenger.h"
+#include "ArduinoLibrary/Led_Matrix.h"
+#include "ArduinoLibrary/Button.h"
+#include "ArduinoLibrary/Led.h"
+#include "ArduinoLibrary/Timer.h"
+#include "ArduinoLibrary/GarageControl.h"
 #include "Config.h"
-#include "GarageControl.h"
 
-// things
-Button openButton(2);
-Button closeButton(3);
+// time defines
+#define SECOND_MS 1000
+#define MINUTE_MS 60000
+#define HOUR_MS   3600000
 
-Led_Matrix screen(16, 8, 2, 1);
+enum MODE
+{
+  RUN,
+  SETUP,
+  BRIGHT,
+  TEMP,
+  SPEED,
+};
 
-Led openLed(5);
-Led closeLed(6);
-
-CmdMessenger cmd(Serial);
+// other functions
+void exit_setup();
 
 // cloud functions
 int funcRestart(String command);
@@ -32,30 +37,20 @@ void onTenSecondTimer();
 // event functions
 void reportHandler(const char * event, const char * data);
 
-// other
-void readLevel();
-void reportLevel();
-
+// global things
+Button openButton(4);
+Button closeButton(5);
+Led_Matrix screen(16, 8, 2, 1);
+Led openLed(2);
+Led closeLed(3);
+CmdMessenger cmd(Serial1);
 Config config;
 Timer tenSecondTimer(SECOND_MS * 10, onTenSecondTimer); // trigger ever 10 seconds
-STEJ_Ping sensor(TRIGGER_PIN, ECHO_PIN);
 
 // global vars
 double upTime = 0.0;
-double currentLevel = 0.0;
-
-uint32_t startTime = 0;  // when the sensor started
-uint32_t readTime = 0;   // when the last read was
-uint32_t reportTime = 0; // when the last report was
-
 int rssi = 0;
-
 bool signalReport = false;
-
-SYSTEM_THREAD(ENABLED);
-//SYSTEM_MODE(SEMI_AUTOMATIC);
-
-
 float temperature = 0.0;
 float humidity = 0.0;
 DS door_status = DS_Unknown;
@@ -63,10 +58,13 @@ MODE mode = RUN;
 MODE submode = BRIGHT;
 Alarm * watchdog = NULL;
 
-// settings
-int8_t brightness = 50;
+  // settings
+int16_t brightness = 100;
 bool celsius = false;
 bool fast = true;
+
+SYSTEM_THREAD(ENABLED);
+//SYSTEM_MODE(SEMI_AUTOMATIC);
 
 void update_display()
 {
@@ -173,7 +171,7 @@ void OnDoorStatus()
 void get_status()
 {
   screen.clearText();
-  screen << F("**");
+  screen << F("Querying the Garage");
   cmd.sendCmd(GC_GetTemperature, F("temp?"));
   cmd.sendCmd(GC_GetDoorStatus, F("door?"));
 }
@@ -216,6 +214,7 @@ void open_pressed(Button & button)
   if (mode == RUN)
   {
     cmd.sendCmd(GC_OpenDoor, F("Open the door!"));
+    Particle.publish("Button", "Open", PRIVATE);
   }
   else
   {
@@ -228,6 +227,7 @@ void close_pressed(Button & button)
   if (mode == RUN)
   {
     cmd.sendCmd(GC_CloseDoor, F("Close the door!"));
+    Particle.publish("Button", "Close", PRIVATE);
   }
   else
   {
@@ -274,7 +274,7 @@ void mode_held(Button & button)
       
       if( watchdog == NULL )
       {
-        watchdog = Timer.delay(exit_setup, 30000);
+        watchdog = ArduinoTimer.delay(exit_setup, 30000);
       }      
 
       update_display();
@@ -302,17 +302,33 @@ void exit_setup()
   update_display();
 }
 
+void onTenSecondTimer()
+{
+  rssi = WiFi.RSSI();
+
+  Particle.publish("Door", toString(door_status), PRIVATE);
+  Particle.publish("Temp", String::format("%f", temperature), PRIVATE);
+  Particle.publish("Humidity", String::format("%f", humidity), PRIVATE);
+}
+
+void reportHandler(const char * event, const char * data)
+{
+}
+
 // Setup function
 void setup()
 {
-  Serial.begin(9600);
+  Serial1.begin(9600);
+  Serial1.print("ID: ");
+  Serial1.println(System.deviceID());
+
+  config.subscribe();
+  config.load();
 
   openButton.attach(bePressed, open_pressed);
   closeButton.attach(bePressed, close_pressed);
-  modeButton.attach(beClick, mode_click);
-  modeButton.attach(beHeld, mode_held);
 
-  screen.begin();
+  screen.begin(0x73, true);
 
   // Adds newline to every command
   cmd.printLfCr();
@@ -323,6 +339,11 @@ void setup()
   cmd.sendCmd(GC_Acknowledge, F("Garage Control Master Started!"));
 
   get_status();
+
+  Particle.variable("rssi", rssi);
+  Particle.subscribe("report", &reportHandler);
+  
+  tenSecondTimer.start();
 }
 
 // Loop function
@@ -334,7 +355,6 @@ void loop()
   // read buttons
   openButton.run();
   closeButton.run();
-  modeButton.run();
 
   // update led matrix
   screen.run(mpScrollLeft, (fast ? 100 : 200));
@@ -342,113 +362,4 @@ void loop()
   // update leds
   closeLed.display();
   openLed.display();
-  
-  // timer
-  Timer.run();
-}
-
-void setup()
-{
-  Serial.begin(9600);
-  Serial.print("ID: ");
-  Serial.println(System.deviceID());
-
-  config.subscribe();
-  config.load();
-
-  Particle.function("restart", funcRestart);
-  Particle.function("report", funcReport);
-
-  Particle.variable("upTime", upTime);
-  Particle.variable("level", currentLevel);
-  Particle.variable("read", readTime);
-  Particle.variable("report", reportTime);
-  Particle.variable("rssi", rssi);
-
-  Particle.subscribe(REPORT_EVENT_NAME, &reportHandler);
-
-  sensor.begin();
-
-  tenSecondTimer.start();
-
-  Particle.publish("build", String::format("%s %s", __DATE__, __TIME__), PRIVATE);
-}
-
-void loop()
-{
-  if( startTime == 0 )
-  {
-    startTime = Time.now();
-  }
-
-  // track the number of days we are running
-  upTime = (double) (Time.now() - startTime) / 86400.0;
-}
-
-int funcRestart(String command)
-{
-  System.reset();
-
-  return 0;
-}
-
-int funcReport(String command)
-{
-  reportLevel();
-
-  return 0;
-}
-
-void onTenSecondTimer()
-{
-  rssi = WiFi.RSSI();
-  readLevel();
-}
-
-void readLevel()
-{
-  uint16_t count = config.sampleCount();
-  double sum = 0;
-
-  for( uint16_t x = 0; x < count; x++ )
-  {
-    if( x > 0 )
-    {
-      delayMicroseconds(1000000);
-    }
-
-    switch( config.sampleUnits() )
-    {
-    case Centimeter:
-      sum += sensor.getDistanceCM();
-      break;
-
-    case Inch:
-      sum += sensor.getDistanceInch();
-      break;
-    }
-
-  //  Particle.publish("SAMPLES", String::format("%d: %f", x, sum), PRIVATE);
-  }
-
-  readTime = Time.now();
-  currentLevel = sum / count;
-}
-
-void reportHandler(const char * event, const char * data)
-{
-  reportLevel();
-}
-
-void reportLevel()
-{
-  reportTime = Time.now();
-
-  Particle.publish(
-      "level/current",
-      String::format("%s;%f;%s",
-          Time.format(readTime,"%F %T").c_str(),
-          currentLevel,
-          toString(config.sampleUnits()).c_str()),
-      PRIVATE);
 }
