@@ -305,8 +305,7 @@ Led_Matrix & operator<<(Led_Matrix & ledm, int16_t number)
 
 Led_Matrix & operator<<(Led_Matrix & ledm, char character)
 {
-  char text[] =
-  { character, '\0' };
+  char text[] = { character, '\0' };
 
   ledm.addText(text);
 

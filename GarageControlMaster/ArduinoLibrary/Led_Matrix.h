@@ -44,9 +44,8 @@ public:
   void resetFrame();
 
   void test();
-  void run(MatrixProgram program = mpScrollLeft, uint16_t rate =
-  LED_MATRIX_FRAME_INTERVAL);
-
+  void run(MatrixProgram program = mpScrollLeft, uint16_t rate = LED_MATRIX_FRAME_INTERVAL);
+  
 private:
   Led_Matrix(const Led_Matrix & rhs);
   Led_Matrix & operator=(const Led_Matrix & rhs);

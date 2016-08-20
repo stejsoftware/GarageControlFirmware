@@ -166,6 +166,11 @@ void Led::display()
   }
 }
 
+bool Led::isRunning() const
+{
+  return m_frame < m_frame_count;
+}
+
 bool operator==(const Led & lhs, const Led & rhs)
 {
   return lhs.pin() == rhs.pin();

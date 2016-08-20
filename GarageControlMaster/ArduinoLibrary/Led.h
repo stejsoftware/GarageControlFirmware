@@ -29,6 +29,9 @@ public:
   // indicates if the led is completely off.
   bool isOff() const;
 
+  // indicates if the led is currently running an animation
+  bool isRunning() const;
+
   void setMax(uint8_t precent);
   // sets the value (%) of the LED.
   void brightness(uint8_t percent);
@@ -56,7 +59,7 @@ private:
   Led & operator=(const Led & rhs);
 
   bool m_on_is_high;
-
+  
   uint32_t m_millis;
   uint16_t m_value;
   uint8_t m_pin;
