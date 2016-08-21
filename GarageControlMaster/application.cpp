@@ -7,6 +7,7 @@
 #include "ArduinoLibrary/Button.h"
 #include "ArduinoLibrary/Led.h"
 #include "ArduinoLibrary/GarageControl.h"
+#include "blynk/blynk.h"
 #include "Config.h"
 
 // time defines
@@ -23,12 +24,8 @@ enum MODE
   SPEED,
 };
 
-// other functions
-void exit_setup();
-
 // cloud functions
-int funcRestart(String command);
-int funcReport(String command);
+int funcDoor(String command);
 
 // timer functions
 void onFiveMinutes();
@@ -38,6 +35,8 @@ void onFiveSeconds();
 Button openButton(4);
 Button closeButton(5);
 Led_Matrix screen(16, 8, 2, 1, 256);
+WidgetLCD lcd(V2);
+WidgetTerminal terminal(V3);
 Led openLed(2);
 Led closeLed(3);
 CmdMessenger cmd(Serial1);
@@ -46,13 +45,11 @@ Timer fiveMinuteTimer(MINUTE_MS * 5, onFiveMinutes);
 Timer fiveSecondTimer(SECOND_MS * 5, onFiveSeconds);
 
 // global vars
-int count = 0;
-double upTime = 0.0;
 int rssi = 0;
 time_t last = 0;
 bool send_temp = true;
-float temperature = 0.0;
-float humidity = 0.0;
+double temperature = 0.0;
+double humidity = 0.0;
 DS door_status = DS_Unknown;
 
   // settings
@@ -61,46 +58,44 @@ bool celsius = false;
 bool fast = true;
 
 SYSTEM_THREAD(ENABLED);
-//SYSTEM_MODE(SEMI_AUTOMATIC);
 
 void update_display()
 {
-  count++;
   screen.clearText();
+  lcd.clear();
   screen.setBrightness((brightness / 100.0) * 15);
-  
+
   closeLed.setMax(brightness);
   openLed.setMax(brightness);
-  
+
   bool moving_door = false;
 
   switch( door_status )
   {
     case DS_Open:
-      closeLed.off();
-      openLed.on();
-    break;
-
     case DS_Closed:
       openLed.off();
-      closeLed.on();
+      closeLed.off();
     break;
 
     case DS_Opening:
-    case DS_Closing:
       if( !openLed.isRunning() )
       {
         openLed.flash();
       }
-      
+
+      moving_door = true;
+    break;
+
+    case DS_Closing:
       if( !closeLed.isRunning() )
       {
         closeLed.flash();
       }
-      
+
       moving_door = true;
     break;
-    
+
     default:
       ; // do nothing
   }
@@ -111,60 +106,71 @@ void update_display()
   }
   else
   {
-    screen 
-      << (int16_t) round(temperature) 
+    screen
+      << (int16_t) round(temperature)
       << char(0xf7) << F(" ") // a degree symbol
       //<< (int16_t) round(humidity) << F("% ")
       << toString(door_status)
       //<< F("Tabitha & Zibby! I don't know the true status of the door casue the sensors are broken! :P ")
       ;
+      
+    lcd.print(0, 0, toString(door_status));
+    lcd.print(0, 1, String::format("%d%c %d%%",(int16_t) round(temperature), char(0xf7), (int16_t) round(humidity)));
   }
 }
 
 void OnTemperature()
 {
+  terminal.print(Time.format(Time.now(), "%H:%M:%S "));
+  terminal.println("OnTemperature()");
+  terminal.flush();
+  
   temperature = cmd.readFloatArg();
   humidity = cmd.readFloatArg();
- 
+
   update_display();
-  
+
   cmd.sendCmd(GC_Acknowledge, F("temp"));
 }
 
 void OnDoorStatus()
 {
+  terminal.print(Time.format(Time.now(), "%H:%M:%S "));
+  terminal.println("OnDoorStatus()");
+  terminal.flush();
+
   door_status = (DS) cmd.readInt32Arg();
-  
+
   update_display();
-  
+
   cmd.sendCmd(GC_Acknowledge, F("door"));
 }
 
 void get_status()
 {
-  screen.clearText();  
+  screen.clearText();
   screen << F("Querying the Garage");
-  
+
   cmd.sendCmd(GC_GetTemperature, F("temp?"));
   cmd.sendCmd(GC_GetDoorStatus, F("door?"));
 }
 
 void open_pressed(Button & button)
 {
+  openLed.flash();
   cmd.sendCmd(GC_OpenDoor, F("Open the door!"));
   Particle.publish("Button", "Open", PRIVATE);
 }
 
 void close_pressed(Button & button)
 {
+  closeLed.flash();
   cmd.sendCmd(GC_CloseDoor, F("Close the door!"));
   Particle.publish("Button", "Close", PRIVATE);
 }
 
 void onFiveMinutes()
 {
-  Particle.publish("Door", toString(door_status), PRIVATE);
-  
   if( send_temp )
   {
     Particle.publish("Temp", String::format("%f", temperature), PRIVATE);
@@ -174,12 +180,42 @@ void onFiveMinutes()
   {
     Particle.publish("Humidity", String::format("%f", humidity), PRIVATE);
     send_temp = true;
-  }    
+  }
 }
 
 void onFiveSeconds()
 {
-  rssi = WiFi.RSSI();  
+  rssi = WiFi.RSSI();
+}
+
+int funcDoor(String command)
+{
+  int status = -1;
+
+  if( strcmp(command, "Status") == 0 )
+  {
+    status = door_status == DS_Open ? 1 : 0;
+  }
+  else
+  if( strcmp(command, "Open") == 0 )
+  {
+    //cmd.sendCmd(GC_OpenDoor, F("Open the door!"));
+    status = 3;
+  }
+  else
+  if( strcmp(command, "Close") == 0 )
+  {
+    cmd.sendCmd(GC_CloseDoor, F("Close the door!"));
+    status = 4;
+  }
+
+  return status;
+}
+
+BLYNK_WRITE(V1) {
+  if (param.asInt() == 1) { // On button down...
+    close_pressed(closeButton);
+  }
 }
 
 // Setup function
@@ -189,6 +225,8 @@ void setup()
   Serial1.print("ID: ");
   Serial1.println(System.deviceID());
 
+  Blynk.begin("7cb12eb10dee49f98c61d3e7b34f7433");
+  
   config.subscribe();
   config.load();
 
@@ -204,11 +242,13 @@ void setup()
   cmd.attach(GC_Temperature, &OnTemperature);
 
   cmd.sendCmd(GC_Acknowledge, F("Garage Control Master Started!"));
-  
+
   Particle.variable("rssi", rssi);
-  Particle.variable("door", door_status);
-  Particle.variable("count", count);
+  Particle.variable("temperature", temperature);
+  Particle.variable("humidity", humidity);
   
+  Particle.function("Door", funcDoor);
+
   fiveMinuteTimer.start();
   fiveSecondTimer.start();
 }
@@ -235,4 +275,6 @@ void loop()
   // update leds
   closeLed.display();
   openLed.display();
+  
+  Blynk.run();
 }
