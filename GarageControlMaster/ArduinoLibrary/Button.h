@@ -66,6 +66,10 @@ private:
   bool m_held;
 
   ButtonEventHandler m_handler[ButtonEvent_Count];
+  
+  friend bool operator==(const Button & lhs, const Button & rhs);
 };
+
+bool operator==(const Button & lhs, const Button & rhs);
 
 #endif // __Button_h_

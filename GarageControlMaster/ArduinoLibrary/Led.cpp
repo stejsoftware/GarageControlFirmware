@@ -94,16 +94,16 @@ void Led::off(LedEventHandler handler)
 void Led::flash(LedEventHandler handler)
 {
   m_frame_count = 0;
-  m_program[m_frame_count++] = 0;
-  m_program[m_frame_count++] = 25;
-  m_program[m_frame_count++] = 50;
-  m_program[m_frame_count++] = 75;
-  m_program[m_frame_count++] = 100;
-  m_program[m_frame_count++] = 100;
-  m_program[m_frame_count++] = 75;
-  m_program[m_frame_count++] = 50;
-  m_program[m_frame_count++] = 25;
-  m_program[m_frame_count++] = 0;
+  m_program[m_frame_count++] = isOn() ? 100 : 0  ;
+  m_program[m_frame_count++] = isOn() ? 75  : 25 ;
+  m_program[m_frame_count++] = isOn() ? 50  : 50 ;
+  m_program[m_frame_count++] = isOn() ? 25  : 75 ;
+  m_program[m_frame_count++] = isOn() ? 0   : 100;
+  m_program[m_frame_count++] = isOn() ? 0   : 100;
+  m_program[m_frame_count++] = isOn() ? 25  : 75 ;
+  m_program[m_frame_count++] = isOn() ? 50  : 50 ;
+  m_program[m_frame_count++] = isOn() ? 75  : 25 ;
+  m_program[m_frame_count++] = isOn() ? 100 : 0  ;
   m_frame = 0;
   m_handler = handler;
 }

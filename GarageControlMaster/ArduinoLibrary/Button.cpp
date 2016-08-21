@@ -142,3 +142,8 @@ bool Button::read()
 
   return state;
 }
+
+bool operator==(const Button & lhs, const Button & rhs)
+{
+  return lhs.m_pin == rhs.m_pin;
+}
