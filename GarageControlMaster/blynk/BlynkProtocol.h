@@ -380,7 +380,7 @@ void BlynkProtocol<Transp>::sendCmd(uint8_t cmd, uint16_t id, const void* data, 
     }
 
     size_t wlen = 0;
-    while (wlen < full_length) {
+    while (wlen < (size_t)full_length) {
         const size_t chunk = BlynkMin(size_t(BLYNK_SEND_CHUNK), full_length - wlen);
 		BLYNK_DBG_DUMP("<", buff + wlen, chunk);
         const size_t w = conn.write(buff + wlen, chunk);
@@ -423,7 +423,7 @@ void BlynkProtocol<Transp>::sendCmd(uint8_t cmd, uint16_t id, const void* data, 
 
 #endif
 
-    if (wlen != full_length) {
+    if (wlen != (size_t)full_length) {
 #ifdef BLYNK_DEBUG
         BLYNK_LOG4(BLYNK_F("Sent "), wlen, '/', full_length);
 #endif
