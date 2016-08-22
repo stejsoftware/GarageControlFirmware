@@ -30,6 +30,7 @@ void lcdPrint(int line, const String & text);
 void debug(const String & text);
 void openDoor();
 void closeDoor();
+void breathe(Led & led);
 
 // global things
 Button openButton(4);
@@ -51,6 +52,7 @@ bool send_temp = true;
 double temperature = 0.0;
 double humidity = 0.0;
 DS door_status = DS_Unknown;
+DOOR_COMMAND door_command = DC_NONE;
 
   // settings
 int16_t brightness = 100;
@@ -65,7 +67,7 @@ void updateDisplay()
     << (int16_t) round(temperature)
     << char(0xf7) << F(" ") // a degree symbol
     //<< (int16_t) round(humidity) << F("% ")
-    << toString(door_status)
+    << ((door_command == DC_NONE) ? toString(door_status) : toString(door_command))
   ;
 }
 
@@ -78,7 +80,7 @@ void onTemperature()
 
   Blynk.virtualWrite(V6, temperature);
   Blynk.virtualWrite(V7, humidity);
-  
+
   cmd.sendCmd(GC_Acknowledge, F("temp"));
   updateDisplay();
 }
@@ -86,39 +88,60 @@ void onTemperature()
 void lcdPrint(int line, const String & text)
 {
   String _text = text;
-  
+
   while( _text.length() < 16 )
   {
     _text += F(" ");
   }
-  
+
   lcd.print(0, line, _text);
 }
 
 void onDoorStatus()
 {
-  //debug("onDoorStatus()");
+  debug("onDoorStatus()");
 
   door_status = (DS) cmd.readInt32Arg();
+  cmd.sendCmd(GC_Acknowledge, F("door"));
+
+  if( ((door_command == DC_OPEN_DOOR)  && (door_status == DS_Open  )) ||  // door is now open
+      ((door_command == DC_CLOSE_DOOR) && (door_status == DS_Closed)) ||  // door is now closed
+       (door_command == DC_NONE)                                       )
+  {
+    door_command = DC_NONE;
+
+    openLed.off();
+    closeLed.off();
+
+    switch( door_status )
+    {
+      case DS_Open:
+        openLed.on();
+        break;
+
+      case DS_Closed:
+        closeLed.on();
+        break;
+    }
+  }
+  else
+  {
+    // door is moving
+    if( !openLed.isRunning() )
+    {
+      breathe(openLed);
+    }
+
+    if( !closeLed.isRunning() )
+    {
+      breathe(closeLed);
+    }
+  }
+
+  updateDisplay();
 
   lcdPrint(0, toString(door_status));
-  
-  openLed.off();
-  closeLed.off();
-
-  switch( door_status )
-  {
-    case DS_Open:
-      openLed.on();
-      break;
-    
-    case DS_Closed:
-      closeLed.on();
-      break;
-  }
-  
-  cmd.sendCmd(GC_Acknowledge, F("door"));
-  updateDisplay();
+  lcdPrint(1, toString(door_command));
 }
 
 void onOpenPressed(Button & button)
@@ -143,6 +166,8 @@ void onFiveMinutes()
     Particle.publish(F("Humidity"), String::format(F("%f"), humidity), PRIVATE);
     send_temp = true;
   }
+
+  Particle.publish(F("Door"), toString(door_status), PRIVATE);
 }
 
 void onFiveSeconds()
@@ -183,17 +208,31 @@ int funcDoor(String command)
 void openDoor()
 {
   debug("Open Door!");
-  openLed.flash();
-  cmd.sendCmd(GC_OpenDoor, F("Open the door!"));
+  //openLed.flash();
   Particle.publish("Button", "Open");
+
+  if( door_command == DC_NONE )
+  {
+    door_command = DC_OPEN_DOOR;
+    cmd.sendCmd(GC_OpenDoor, F("Open the door!"));
+  }
+
+  cmd.sendCmd(GC_GetDoorStatus, F("door?"));
 }
 
 void closeDoor()
 {
   debug("Close Door!");
-  closeLed.flash();
-  cmd.sendCmd(GC_CloseDoor, F("Close the door!"));  
+  //closeLed.flash();
   Particle.publish("Button", "Close");
+
+  if( door_command == DC_NONE )
+  {
+    door_command = DC_CLOSE_DOOR;
+    cmd.sendCmd(GC_CloseDoor, F("Close the door!"));
+  }
+
+  cmd.sendCmd(GC_GetDoorStatus, F("door?"));
 }
 
 BLYNK_WRITE(V0) {
@@ -213,6 +252,18 @@ void debug(const String & text)
   terminal.print(Time.format(Time.now(), "%H:%M:%S "));
   terminal.println(text);
   terminal.flush();
+}
+
+void breathe(Led & led)
+{
+  if( led.isOn() )
+  {
+    led.fadeOff(breathe);
+  }
+  else
+  {
+    led.fadeOn(breathe);
+  }
 }
 
 // Setup function
@@ -238,7 +289,7 @@ void setup()
 
   debug("STEJ Garage Control");
   debug(String::format("Built: %s %s",__DATE__, __TIME__));
-  
+
   closeLed.setMax(brightness);
   openLed.setMax(brightness);
 
@@ -248,9 +299,9 @@ void setup()
   screen.begin(0x73, true);
   screen.setBrightness((brightness / 100.0) * 15);
   screen.clearText();
-  
+
   screen << "Now is the time for a very long message to see if it works!";
-  
+
   lcd.clear();
 
   // Adds newline to every command

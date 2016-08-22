@@ -31,15 +31,21 @@ enum DS
   DS_Closing  // 4
 };
 
+enum DOOR_COMMAND {
+  DC_NONE,
+  DC_OPEN_DOOR,
+  DC_CLOSE_DOOR
+};
+
 struct Response
 {
   GC code;
   uint32_t value;
 };
 
-String toString(DS door)
+String toString(DS e)
 {
-  switch( door )
+  switch( e )
   {
     case DS_Unknown:
       return "Unknown";
@@ -56,38 +62,57 @@ String toString(DS door)
   return "??";
 }
 
-Print & operator<<(Print & ps, GC e)
+Print & operator<<(Print & ps, DS e)
+{
+  ps.print(toString(e));
+  return ps;
+}
+
+String toString(DOOR_COMMAND e)
+{
+  switch( e )
+  {
+    case DC_NONE:
+      return "NONE";
+    case DC_OPEN_DOOR:
+      return "*** Opening ***";
+    case DC_CLOSE_DOOR:
+      return "*** Closing ***";
+  }
+  
+  return "??";
+}
+
+Print & operator<<(Print & ps, DOOR_COMMAND e)
+{
+  ps.print(toString(e));
+  return ps;
+}
+
+String toString(GC e)
 {
   switch( e )
   {
     case GC_Acknowledge:
-      ps.print("GC_Acknowledge");
-    break;
-
+      return "GC_Acknowledge";
     case GC_Error:
-      ps.print("GC_Error");
-    break;
-   
+      return "GC_Error";
     case GC_GetTemperature:
-      ps.print("GC_GetTemperature");
-    break;
-    
+      return "GC_GetTemperature";
     case GC_Temperature:
-      ps.print("GC_Temperature");
-    break;
-
+      return "GC_Temperature";
     case GC_GetDoorStatus:
-      ps.print("GC_GetDoorStatus");
-    break;
-    
+      return "GC_GetDoorStatus";
     case GC_DoorStatus:
-      ps.print("GC_DoorStatus");
-    break;
-
-    default:
-      ps.print("??");
+      return "GC_DoorStatus";
   }
-  
+
+  return "??";
+}
+
+Print & operator<<(Print & ps, GC e)
+{
+  ps.print(toString(e));
   ps.print(" (");
   ps.print(e);
   ps.print(")");
