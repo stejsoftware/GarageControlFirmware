@@ -5,7 +5,7 @@ Arduino powered garage door controller.
 
 ### Website
 
-[The Garage Control Project](http://stejsoftware.com/projects/garage-control)
+[The Garage Control Project](http://stejsoftware.github.io/GarageControlFirmware/)
 
 ### Depends
 
