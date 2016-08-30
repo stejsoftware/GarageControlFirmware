@@ -1,0 +1,6 @@
+{
+  "name": "GarageControlFirmware",
+  "tagline": "Arduino powered garage door controller.",
+  "body": "stej-garage-control\r\n===================\r\n\r\nArduino powered garage door controller.\r\n\r\n### Website\r\n\r\n[The Garage Control Project](http://stejsoftware.com/projects/garage-control)\r\n\r\n### Depends\r\n\r\nThis project is dependent on a few other Arduino libraries:\r\n\r\n* [My ArduinoLibrary](https://github.com/stejsoftware/ArduinoLibrary)\r\n* [DHT](https://github.com/adafruit/DHT-sensor-library)\r\n* [Adafruit_LEDBackpack](https://github.com/adafruit/Adafruit-LED-Backpack-Library)\r\n* [Adafruit_GFX](https://github.com/adafruit/Adafruit-GFX-Library)\r\n* [CmdMessenger](https://github.com/thijse/Arduino-CmdMessenger)\r\n",
+  "note": "Don't delete this file! It's used internally to help with page regeneration."
+}
