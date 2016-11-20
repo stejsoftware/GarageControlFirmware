@@ -7,7 +7,7 @@
 #include "ArduinoLibrary/Button.h"
 #include "ArduinoLibrary/Led.h"
 #include "ArduinoLibrary/GarageControl.h"
-#include "blynk/blynk.h"
+//#include "blynk/blynk.h"
 
 // time defines
 #define SECOND_MS 1000
@@ -19,14 +19,16 @@ void onButtonPressed(Button & button);
 
 // cloud functions
 int funcDoor(String command);
+int funcRestart(String command);
 
 // timer functions
 void onFiveMinutes();
 void onFiveSeconds();
 void onThirtySeconds();
+void onMovementWatchdog();
 
 // other functions
-void lcdPrint(int line, const String & text);
+//void lcdPrint(int line, const String & text);
 void debug(const String & text);
 void openDoor();
 void closeDoor();
@@ -42,8 +44,10 @@ CmdMessenger cmd(Serial1);
 Timer fiveMinuteTimer(MINUTE_MS * 5, onFiveMinutes);
 Timer fiveSecondTimer(SECOND_MS * 5, onFiveSeconds);
 Timer thirtySecondTimer(SECOND_MS * 30, onThirtySeconds);
-WidgetLCD lcd(V2);
-WidgetTerminal terminal(V3);
+Timer movementWatchdog(MINUTE_MS, onMovementWatchdog, true);
+
+//WidgetLCD lcd(V2);
+//WidgetTerminal terminal(V3);
 
 // global vars
 int rssi = 0;
@@ -78,13 +82,14 @@ void onTemperature()
   temperature = cmd.readFloatArg();
   humidity = cmd.readFloatArg();
 
-  Blynk.virtualWrite(V6, temperature);
-  Blynk.virtualWrite(V7, humidity);
+//  Blynk.virtualWrite(V6, temperature);
+//  Blynk.virtualWrite(V7, humidity);
 
   cmd.sendCmd(GC_Acknowledge, F("temp"));
   updateDisplay();
 }
 
+/*
 void lcdPrint(int line, const String & text)
 {
   String _text = text;
@@ -96,6 +101,7 @@ void lcdPrint(int line, const String & text)
 
   lcd.print(0, line, _text);
 }
+*/
 
 void onDoorStatus()
 {
@@ -110,38 +116,43 @@ void onDoorStatus()
   {
     door_command = DC_NONE;
 
-    openLed.off();
-    closeLed.off();
+    movementWatchdog.stop();
 
     switch( door_status )
     {
       case DS_Open:
         openLed.on();
+        closeLed.off();
         break;
 
       case DS_Closed:
         closeLed.on();
+        openLed.off();
         break;
     }
   }
   else
   {
-    // door is moving
-    if( !openLed.isRunning() )
+    switch( door_command )
     {
-      breathe(openLed);
-    }
-
-    if( !closeLed.isRunning() )
-    {
-      breathe(closeLed);
+      case DC_OPEN_DOOR:
+        breathe(openLed);
+        closeLed.off();
+        break;
+      
+      case DC_CLOSE_DOOR:
+        breathe(closeLed);
+        openLed.off();
+        break;
     }
   }
 
   updateDisplay();
 
-  lcdPrint(0, toString(door_status));
-  lcdPrint(1, toString(door_command));
+  Particle.publish(F("Door"), toString(door_status), PRIVATE);
+
+  //lcdPrint(0, toString(door_status));
+  //lcdPrint(1, toString(door_command));
 }
 
 void onOpenPressed(Button & button)
@@ -166,19 +177,24 @@ void onFiveMinutes()
     Particle.publish(F("Humidity"), String::format(F("%f"), humidity), PRIVATE);
     send_temp = true;
   }
-
-  Particle.publish(F("Door"), toString(door_status), PRIVATE);
 }
 
 void onFiveSeconds()
 {
   rssi = WiFi.RSSI();
-  Blynk.virtualWrite(V8, rssi);
+  //Blynk.virtualWrite(V8, rssi);
 }
 
 void onThirtySeconds()
 {
   cmd.sendCmd(GC_GetDoorStatus, F("door?"));
+}
+
+void onMovementWatchdog()
+{
+  // if the door hasn't finished moving then we have a problem
+  // reset the door command to none
+  door_command = DC_NONE;
 }
 
 int funcDoor(String command)
@@ -205,6 +221,12 @@ int funcDoor(String command)
   return status;
 }
 
+int funcRestart(String command)
+{
+  System.reset();
+  return 0;
+}
+
 void openDoor()
 {
   debug("Open Door!");
@@ -215,6 +237,7 @@ void openDoor()
   {
     door_command = DC_OPEN_DOOR;
     cmd.sendCmd(GC_OpenDoor, F("Open the door!"));
+    movementWatchdog.start();
   }
 
   cmd.sendCmd(GC_GetDoorStatus, F("door?"));
@@ -230,11 +253,13 @@ void closeDoor()
   {
     door_command = DC_CLOSE_DOOR;
     cmd.sendCmd(GC_CloseDoor, F("Close the door!"));
+    movementWatchdog.start();
   }
 
   cmd.sendCmd(GC_GetDoorStatus, F("door?"));
 }
 
+/*
 BLYNK_WRITE(V0) {
   if (param.asInt() == 1) { // On button down...
     openDoor();
@@ -246,23 +271,27 @@ BLYNK_WRITE(V1) {
     closeDoor();
   }
 }
+*/
 
 void debug(const String & text)
 {
-  terminal.print(Time.format(Time.now(), "%H:%M:%S "));
-  terminal.println(text);
-  terminal.flush();
+//  terminal.print(Time.format(Time.now(), "%H:%M:%S "));
+//  terminal.println(text);
+//  terminal.flush();
 }
 
 void breathe(Led & led)
 {
-  if( led.isOn() )
+  if( !led.isRunning() )
   {
-    led.fadeOff(breathe);
-  }
-  else
-  {
-    led.fadeOn(breathe);
+    if( led.isOn() )
+    {
+      led.fadeOff(breathe);
+    }
+    else
+    {
+      led.fadeOn(breathe);
+    }
   }
 }
 
@@ -279,13 +308,14 @@ void setup()
 
   // register Particle functions
   Particle.function("Door", funcDoor);
+  Particle.function("Restart", funcRestart);
 
   // connect to the blynk server
-  Blynk.begin("7cb12eb10dee49f98c61d3e7b34f7433");
+  //Blynk.begin("7cb12eb10dee49f98c61d3e7b34f7433");
 
-  while (Blynk.connect() == false) {
+  //while (Blynk.connect() == false) {
     // Wait until connected
-  }
+  //}
 
   debug("STEJ Garage Control");
   debug(String::format("Built: %s %s",__DATE__, __TIME__));
@@ -302,7 +332,7 @@ void setup()
 
   screen << "Now is the time for a very long message to see if it works!";
 
-  lcd.clear();
+  //lcd.clear();
 
   // Adds newline to every command
   cmd.printLfCr();
@@ -335,5 +365,5 @@ void loop()
   openLed.display();
 
   // update blynk
-  Blynk.run();
+  //Blynk.run();
 }
